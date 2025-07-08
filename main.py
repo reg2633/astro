@@ -5,6 +5,8 @@ from PIL import Image
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz
 from astropy.time import Time
 from datetime import datetime
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 # --- Streamlit 앱 페이지 설정 ---
 st.set_page_config(page_title="천문 이미지 분석기", layout="wide")
@@ -40,6 +42,24 @@ if uploaded_file:
                 data = image_hdu.data
                 data = np.nan_to_num(data)
 
+                # --- FITS 헤더에서 거리 정보 추출 ---
+                distance_keys = ['DISTANCE', 'DIST', 'PARSEC']
+                header_distance = None
+                for key in distance_keys:
+                    if key in header:
+                        try:
+                            header_distance = float(header[key])
+                            if header_distance <= 0:
+                                header_distance = None
+                                st.sidebar.warning(f"FITS 헤더의 {key} 값({header[key]})이 유효하지 않습니다. 기본값(100 파섹)을 사용합니다.")
+                            break
+                        except (ValueError, TypeError):
+                            st.sidebar.warning(f"FITS 헤더의 {key} 값({header[key]})을 숫자로 변환할 수 없습니다. 기본값(100 파섹)을 사용합니다.")
+                            header_distance = None
+
+                # 기본 거리 설정
+                default_distance = header_distance if header_distance is not None else 100.0
+
                 st.success(f"**'{uploaded_file.name}'** 파일을 성공적으로 처리했습니다.")
                 col1, col2 = st.columns(2)
 
@@ -68,12 +88,71 @@ if uploaded_file:
                     img = Image.fromarray(norm_data)
                     st.image(img, caption="업로드된 FITS 이미지", use_container_width=True)
 
-                # --- 사이드바: 현재 천체 위치 계산 및 적경/적위 표시 ---
-                st.sidebar.header("🧭 현재 천체 위치 (서울 기준)")
-
+                # --- 3D 공간 좌표 시각화 ---
+                st.header("3D 공간 좌표")
                 if 'RA' in header and 'DEC' in header:
                     try:
-                        target_coord = SkyCoord(ra=header['RA'], dec=header['DEC'], unit=('hourangle', 'deg'))
+                        # 거리 입력
+                        distance = st.sidebar.number_input(
+                            "천체까지의 거리 (파섹)",
+                            min_value=0.0,
+                            value=default_distance,
+                            step=10.0,
+                            help="FITS 헤더에서 거리 정보를 읽었거나 기본값 100 파섹을 사용합니다."
+                        )
+                        if header_distance is not None:
+                            st.sidebar.info(f"FITS 헤더에서 거리 {header_distance:.2f} 파섹을 읽었습니다.")
+                        if distance <= 0:
+                            st.sidebar.warning("거리는 양수여야 합니다.")
+                            st.write("3D 플롯을 표시하려면 유효한 거리를 입력해주세요.")
+                        else:
+                            target_coord = SkyCoord(
+                                ra=header['RA'], dec=header['DEC'], distance=distance,
+                                unit=('hourangle', 'deg', 'parsec')
+                            )
+                            # 3D 좌표 계산
+                            x, y, z = target_coord.cartesian.xyz.value  # 파섹 단위
+
+                            # 3D 플롯 생성
+                            fig = plt.figure(figsize=(8, 8))
+                            ax = fig.add_subplot(111, projection='3d')
+                            # 태양 (원점)
+                            ax.scatter([0], [0], [0], color='yellow', s=100, label='Sun')
+                            # 천체
+                            ax.scatter([x], [y], [z], color='blue', s=50, label='Target')
+                            ax.set_xlabel('X (parsec)')
+                            ax.set_ylabel('Y (parsec)')
+                            ax.set_zlabel('Z (parsec)')
+                            ax.set_title('3D Position of Celestial Object')
+                            ax.legend()
+                            ax.grid(True)
+                            st.pyplot(fig)
+                    except Exception as e:
+                        st.write(f"3D 플롯 생성 실패: {e}")
+                else:
+                    st.write("FITS 헤더에 RA/DEC 정보가 없습니다. 3D 플롯을 표시할 수 없습니다.")
+
+                # --- 사이드바: 현재 천체 위치 계산 및 적경/적위/거리 표시 ---
+                st.sidebar.header("🧭 현재 천체 위치 (서울 기준)")
+                if 'RA' in header and 'DEC' in header:
+                    try:
+                        distance = st.sidebar.number_input(
+                            "천체까지의 거리 (파섹)",
+                            min_value=0.0,
+                            value=default_distance,
+                            step=10.0,
+                            key="distance_input",
+                            help="FITS 헤더에서 거리 정보를 읽었거나 기본값 100 파섹을 사용합니다."
+                        )
+                        if distance <= 0:
+                            target_coord = SkyCoord(
+                                ra=header['RA'], dec=header['DEC'], unit=('hourangle', 'deg')
+                            )
+                        else:
+                            target_coord = SkyCoord(
+                                ra=header['RA'], dec=header['DEC'], distance=distance,
+                                unit=('hourangle', 'deg', 'parsec')
+                            )
                         altaz = target_coord.transform_to(AltAz(obstime=now_astropy, location=seoul_location))
                         altitude = altaz.alt.degree
                         azimuth = altaz.az.degree
@@ -83,6 +162,8 @@ if uploaded_file:
                         dec_dms = target_coord.dec.to_string(unit='deg', sep=':', precision=2)
                         st.sidebar.metric("적경 (RA)", ra_hms)
                         st.sidebar.metric("적위 (DEC)", dec_dms)
+                        # 거리 표시
+                        st.sidebar.metric("거리 (parsec)", f"{distance:.2f}" if distance > 0 else "N/A")
                         st.sidebar.metric("고도 (°)", f"{altitude:.2f}")
                         st.sidebar.metric("방위각 (°)", f"{azimuth:.2f}")
                     except Exception as e:
