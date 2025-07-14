@@ -2,3 +2,4 @@ streamlit
 astropy
 numpy
 pillow
+matplotlib
