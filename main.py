@@ -89,54 +89,49 @@ if uploaded_file:
                     st.image(img, caption="업로드된 FITS 이미지", use_container_width=True)
 
                 # --- 3D 공간 좌표 시각화 ---
-               st.header("3D Spatial Coordinates")
-if 'RA' in header and 'DEC' in header:
-    try:
-        # Distance input
-        distance = st.sidebar.number_input(
-            "Distance to Object (parsecs)",
-            min_value=0.0,
-            value=default_distance,
-            step=10.0,
-            help="Distance read from FITS header or default value of 100 parsecs."
-        )
-        if header_distance is not None:
-            st.sidebar.info(f"Distance of {header_distance:.2f} parsecs read from FITS header.")
-        if distance <= 0:
-            st.sidebar.warning("Distance must be positive.")
-            st.write("Please enter a valid distance to display the 3D plot.")
-        else:
-            target_coord = SkyCoord(
-                ra=header['RA'], dec=header['DEC'], distance=distance,
-                unit=('hourangle', 'deg', 'parsec')
-            )
-            # 3D coordinates calculation
-            x, y, z = target_coord.cartesian.xyz.value  # Parsecs
+                st.header("3D 공간 좌표")
+                if 'RA' in header and 'DEC' in header:
+                    try:
+                        # 거리 입력
+                        distance = st.sidebar.number_input(
+                            "천체까지의 거리 (파섹)",
+                            min_value=0.0,
+                            value=default_distance,
+                            step=10.0,
+                            help="FITS 헤더에서 거리 정보를 읽었거나 기본값 100 파섹을 사용합니다."
+                        )
+                        if header_distance is not None:
+                            st.sidebar.info(f"FITS 헤더에서 거리 {header_distance:.2f} 파섹을 읽었습니다.")
+                        if distance <= 0:
+                            st.sidebar.warning("거리는 양수여야 합니다.")
+                            st.write("3D 플롯을 표시하려면 유효한 거리를 입력해주세요.")
+                        else:
+                            target_coord = SkyCoord(
+                                ra=header['RA'], dec=header['DEC'], distance=distance,
+                                unit=('hourangle', 'deg', 'parsec')
+                            )
+                            # 3D 좌표 계산
+                            x, y, z = target_coord.cartesian.xyz.value  # 파섹 단위
 
-            # 3D plot creation
-            fig = plt.figure(figsize=(8, 8))
-            ax = fig.add_subplot(111, projection='3d')
-            # Sun (origin)
-            ax.scatter([0], [0], [0], color='yellow', s=100, label='Sun')
-            # Celestial object
-            ax.scatter([x], [y], [z], color='blue', s=50, label='Object')
-            ax.set_xlabel('X (parsecs)')
-            ax.set_ylabel('Y (parsecs)')
-            ax.set_zlabel('Z (parsecs)')
-            ax.set_title('3D Position of Celestial Object')
-            ax.legend()
-            ax.grid(True)
-            # Optional: Dynamic axis limits for better visualization
-            max_range = max(abs(x), abs(y), abs(z), distance) * 1.2
-            ax.set_xlim([-max_range, max_range])
-            ax.set_ylim([-max_range, max_range])
-            ax.set_zlim([-max_range, max_range])
-            st.pyplot(fig)
-    except Exception as e:
-        st.write(f"Failed to create 3D plot: {e}")
-else:
-    st.write("RA/DEC information not found in FITS header. Unable to display 3D plot.")
-
+                            # 3D 플롯 생성
+                            fig = plt.figure(figsize=(8, 8))
+                            ax = fig.add_subplot(111, projection='3d')
+                            # 태양 (원점)
+                            ax.scatter([0], [0], [0], color='yellow', s=100, label='Sun')
+                            # 천체
+                            ax.scatter([x], [y], [z], color='blue', s=50, label='Target')
+                            ax.set_xlabel('X (parsec)')
+                            ax.set_ylabel('Y (parsec)')
+                            ax.set_zlabel('Z (parsec)')
+                            ax.set_title('3D Position of Celestial Object')
+                            ax.legend()
+                            ax.grid(True)
+                            st.pyplot(fig)
+                    except Exception as e:
+                        st.write(f"3D 플롯 생성 실패: {e}")
+                else:
+                    st.write("FITS 헤더에 RA/DEC 정보가 없습니다. 3D 플롯을 표시할 수 없습니다.")
+            
                 # --- 사이드바: 현재 천체 위치 계산 및 적경/적위/거리 표시 ---
                 st.sidebar.header("🧭 현재 천체 위치 (서울 기준)")
                 if 'RA' in header and 'DEC' in header:
